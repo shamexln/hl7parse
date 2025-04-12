@@ -1,0 +1,50 @@
+function exportData() {
+    fetch('/exportExcel')
+        .then(response => response.json())
+        .then(data => {
+            alert(data.message);
+        })
+        .catch(err => {
+            alert('Error exporting data. Check logs.');
+        });
+}
+
+function queryPatient() {
+    let patientId = document.getElementById('patientIdInput').value.trim();
+
+    if (!patientId) {
+        alert("Please enter a patient ID.");
+        return;
+    }
+
+    fetch(`/api/patients/${encodeURIComponent(patientId)}`)
+        .then(response => response.json())
+        .then(data => {
+            let resultDiv = document.getElementById('patientResult');
+
+            if (data.success) {
+                let patient = data.patient;
+                let table = '<table border="1"><thead><tr>';
+
+                // 生成表头
+                for (const key in patient) {
+                    table += `<th>${key}</th>`;
+                }
+                table += '</tr></thead><tbody><tr>';
+
+                // 生成表格数据行
+                for (const key in patient) {
+                    table += `<td>${patient[key]}</td>`;
+                }
+                table += '</tr></tbody></table>';
+
+                resultDiv.innerHTML = table;
+            } else {
+                resultDiv.innerHTML = `<p>${data.message}</p>`;
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            alert('Error retrieving patient information. See logs.');
+        });
+}

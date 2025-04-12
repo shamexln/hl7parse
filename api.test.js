@@ -1,6 +1,6 @@
 const axios = require('axios');
 
-const API_URL = 'http://localhost:8080';
+const API_URL = 'http://localhost:3000';
 
 // 确保在测试前API服务器已经运行
 

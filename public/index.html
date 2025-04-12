@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>HL7 Patients Data</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<h1>HL7 Patients Data Management</h1>
+
+<div>
+    <input type="text" id="patientIdInput" placeholder="Enter Patient ID"/>
+    <button onclick="queryPatient()">Search Patient</button>
+</div>
+
+<div id="patientResult"></div>
+
+<button onclick="exportData()">Export Patients to Excel</button>
+
+<script src="script.js"></script>
+</body>
+</html>
