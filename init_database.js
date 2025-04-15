@@ -19,6 +19,7 @@ function initializeDatabase() {
         db.run(`
             CREATE TABLE IF NOT EXISTS ${TABLE_HL7_PATIENTS} (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                device_id TEXT,
                 local_time TEXT,
                 Date TEXT,
                 Time TEXT,
@@ -32,6 +33,7 @@ function initializeDatabase() {
                 Alarm_Grade_2 TEXT,
                 alarm_message TEXT,
                 param_id TEXT,
+                param_description TEXT,
                 param_value TEXT,
                 param_uom TEXT,
                 param_upper_lim TEXT,

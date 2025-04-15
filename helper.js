@@ -10,9 +10,9 @@ const helpFunctions = {
     getAlarmType(alarmType) {
         switch (alarmType) {
             case '196652':
-                return this.AlarmTypeEnum.LOW_ALARM;
-            case '196674':
                 return this.AlarmTypeEnum.HIGH_ALARM;
+            case '196674':
+                return this.AlarmTypeEnum.LOW_ALARM;
             default:
                 return this.AlarmTypeEnum.UNKNOWN;
         }
@@ -110,7 +110,23 @@ const helpFunctions = {
         return null;
     }
     const components = field.split(delimiter); // 分割子组件
+    // 增加对 -1 的支持，返回最后一个元素
+    if (index === -1) {
+        return components[components.length - 1] || null;
+    }
+
     return components[index] || null; // 返回指定索引的值，无值则返回 null
+},
+    getAlarmPriority(value) {
+    const mapping = {
+        PN: 'not indicated',
+        PL: 'Low',
+        PM: 'Medium',
+        PH: 'High',
+    };
+
+    // 默认输出为原值或 "Unknown"（防止意外值未定义）
+    return mapping[value] || 'Unknown';
 },
 
 /**
@@ -121,13 +137,13 @@ const helpFunctions = {
  * @returns {string|null} - 找到的值或null（如果未找到）
  */
  getObxValueByIdentifier(hl7Message, identifierText, delimiter = "^", valueFieldIndex = 5) {
-    if (!hl7Message || !hl7Message.msg) {
+    if (!hl7Message ) {
         logger.error('Invalid HL7 message');
         return null;
     }
 
     // 获取所有OBX段
-    const obxSegments = hl7Message.msg.getSegments('OBX');
+    const obxSegments = hl7Message.getSegments('OBX');
     if (!obxSegments || obxSegments.length === 0) {
         logger.error('No OBX segments found in received HL7 message');
         return null;
@@ -166,13 +182,13 @@ const helpFunctions = {
  * @returns {Array} - 包含所有匹配值类型的OBX段解析结果的数组
  */
  extractObxCodesByValueType(hl7Message, valueType = "NM") {
-    if (!hl7Message || !hl7Message.msg) {
+    if (!hl7Message) {
         logger.error('Invalid HL7 message');
         return [];
     }
 
     // 获取所有OBX段
-    const obxSegments = hl7Message.msg.getSegments('OBX');
+    const obxSegments = hl7Message.getSegments('OBX');
     if (!obxSegments || obxSegments.length === 0) {
         logger.error('No OBX segments found in received HL7 message');
         return [];

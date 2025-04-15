@@ -15,6 +15,7 @@ const logger = winston.createLogger({
 });
 
 const encodeToDescriptionMap = new Map();
+const encodeToObservationTypeMap = new Map();
 
 async function initializeCodeSystem(xmlData= CODE_SYSTEM) {
     try {
@@ -56,6 +57,12 @@ async function initializeCodeSystem(xmlData= CODE_SYSTEM) {
                     const description = tag.description[0];
                     encodeToDescriptionMap.set(encode, description);
                 }
+
+                if (tag.encode && tag.encode[0] && tag.observationtype && tag.observationtype[0]) {
+                    const encode = tag.encode[0];
+                    const observationtype = tag.observationtype[0];
+                    encodeToObservationTypeMap.set(encode, observationtype);
+                }
             });
             logger.info('Code system initialized successfully.');
         }
@@ -81,7 +88,13 @@ function getDescription(encode) {
     return encodeToDescriptionMap.get(encode);
 }
 
+function getObservationType(encode) {
+    return encodeToObservationTypeMap.get(encode);
+}
+
+
 module.exports = {
     initializeCodeSystem,
-    getDescription
+    getDescription,
+    getObservationType
 };
