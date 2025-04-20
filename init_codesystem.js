@@ -1,8 +1,9 @@
 const { CODE_SYSTEM } = require('./config');
-const fs = require('fs').promises;
+const fs = require('fs');
 const xml2js = require('xml2js');
 const winston = require("winston");
 const parser = new xml2js.Parser();
+const path = require('path');
 
 // 日志配置示例（仅供参考，你项目中可能已有此配置）
 const logger = winston.createLogger({
@@ -17,10 +18,30 @@ const logger = winston.createLogger({
 const encodeToDescriptionMap = new Map();
 const encodeToObservationTypeMap = new Map();
 
+function getFilePath(filename) {
+    // 尝试多种可能的路径
+    const possiblePaths = [
+        path.join(__dirname, filename),
+        path.join(process.cwd(), filename),
+        path.join(path.dirname(process.execPath), filename)
+    ];
+
+    for (const p of possiblePaths) {
+        if (fs.existsSync(p)) {
+            return p;
+        }
+    }
+
+    // 如果都找不到，返回默认路径
+    return path.join(__dirname, filename);
+}
+
 async function initializeCodeSystem(xmlData= CODE_SYSTEM) {
     try {
         let bomRemovedData;
-        const data = await fs.readFile(xmlData);
+        const xmlPath = getFilePath(xmlData);
+
+        const data = await fs.promises.readFile(xmlPath);
         bomRemovedData = data.toString().replace("\ufeff", "");
 
 
@@ -31,7 +52,7 @@ async function initializeCodeSystem(xmlData= CODE_SYSTEM) {
         logger.info('XML structure:', JSON.stringify(result, null, 2).substring(0, 500) + '...');
         // 获取根元素名称
         const rootName = Object.keys(result)[0];
-        console.log('Root element name:', rootName);
+        logger.info('Root element name:', rootName);
 
         // 遍历解析后的 XML 数据
         const rootElement = result[rootName];
@@ -44,7 +65,7 @@ async function initializeCodeSystem(xmlData= CODE_SYSTEM) {
         } else {
             // 如果没有直接的tag属性，需要查看实际结构
             // 这里需要根据实际XML结构进行调整
-            console.error('No "tag" element found. Please check XML structure');
+            logger.error('No "tag" element found. Please check XML structure');
             return;
         }
 

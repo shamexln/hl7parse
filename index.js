@@ -535,47 +535,6 @@ server.listen(3359, () => {
   logger.info("TCP interface listening on 3359");
 });
 
-/*var app = hl7.tcp();
-
-app.use( (req, res, next) =>{
-  logger.info("Received HL7 message:\n" + req.msg.toString());
-  next();
-});
-
-//create middleware
-app.use(async (req, res, next) => {
-  //create middleware for certain message types
-  if (req.type != "ORU" || req.event != "R40") {
-    return next();
-  }
-
-  try {
-   // await savePatientData(req); // 确保数据已完成存储
-    next(); // 然后再去下一个中间件
-  } catch (error) {
-    next(error); // 出错时传递给Express错误处理中间件
-  }
-});
-
-//Send Ack
-app.use(function (req, res, next) {
-  logger.info("************sending ack****************");
-  res.end(""); // 正确ACK封装方式
-
-});
-
-//Error Handler
-app.use(function (err, req, res, next) {
-  var msa = res.ack.getSegment("MSA");
-  msa.setField(1, "AE");
-  msa.setField(2, req.msg.getSegment("MSH").getField(10)); // 返回消息ID作为ACK消息引用
-  logger.error("HL7 handle message error", err);
-  res.end();
-
-});
-
-app.start(3359,  'utf-8' );
-logger.info("tcp interface listening on " + 3359);*/
 
 // 添加需要的新依赖
 const express = require("express");

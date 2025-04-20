@@ -11,7 +11,8 @@
    "bin": "./index.js",
    "pkg": {
    "assets": [
-   "public/**/*",
+3. "public/**",
+   "public/browser/**",
    "node_modules/sqlite3/**/*",
    "300.xml"
    ],

@@ -83,7 +83,7 @@ const helpFunctions = {
     const second = parseInt(hl7DateTime.substring(12, 14)) || 0;
 
     const date = new Date(Date.UTC(year, month, day, hour, minute, second));
-    return date.toISOString().replace('T', ' ').substring(11, 15);
+    return date.toISOString().replace('T', ' ').substring(11, 16);
 },
 
  convertToUTCHour(hl7DateTime) {

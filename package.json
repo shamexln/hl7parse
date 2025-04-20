@@ -9,9 +9,10 @@
   "bin": "./index.js",
   "pkg": {
     "assets": [
-      "public/**/*",
+      "public/**",
+      "public/browser/**",
       "node_modules/sqlite3/**/*",
-      "300.xml"
+      "./300.xml"
     ],
     "targets": [
       "node18-win-x64"
