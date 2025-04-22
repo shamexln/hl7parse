@@ -610,6 +610,7 @@ httpApp.get("/api/patients/search", (req, res) => {
 // Express原生并不直接支持路径内可选参数位于中间位置，但位于末尾时是允许的：
 httpApp.get("/api/patients/paginated/:id?", (req, res) => {
   res.setHeader('Content-Type', 'application/json');
+  const { startTime, endTime } = req.query;
   let { id } = req.params;
   if (!id || id.trim() === '') {
     id = null; // 明确表示搜索所有病人
@@ -621,6 +622,8 @@ httpApp.get("/api/patients/paginated/:id?", (req, res) => {
     DATABASE_FILE,
     TABLE_HL7_PATIENTS,
     id,
+    startTime,
+    endTime,
     page,
     pageSize,
     (err, result) => {
@@ -646,22 +649,37 @@ function getPaginatedData(
   databaseFile,
   tableName,
   patID,
+  startTime,
+  endTime,
   page = 1,
   pageSize = 10,
   callback,
 ) {
   const offset = (page - 1) * pageSize;
   const db = new sqlite3.Database(databaseFile);
-  const hasPatientId = patID != null && patID.trim() !== '';
-  const whereClause = hasPatientId ? 'WHERE pat_ID = ?' : '';
+  let whereParts = [];
+  let params = [];
+  if (patID != null && patID.trim() !== '') {
+    whereParts.push('pat_ID = ?');
+    params.push(patID);
+  }
+  if (startTime) {
+    whereParts.push('Date >= ?');
+    params.push(startTime);
+  }
+  if (endTime) {
+    whereParts.push('Date <= ?');
+    params.push(endTime);
+  }
+
+  const whereClause = whereParts.length > 0 ? `WHERE ${whereParts.join(' AND ')}` : '';
   const totalQuery = `SELECT COUNT(*) AS total FROM ${tableName} ${whereClause}`;
   const dataQuery = `SELECT * FROM ${tableName} ${whereClause} LIMIT ? OFFSET ?`;
-  const totalParams = hasPatientId ? [patID] : [];
-  const dataParams = hasPatientId ? [patID, pageSize, offset] : [pageSize, offset];
+  const dataParams = params.concat([pageSize, offset]);
 
 
   db.serialize(() => {
-    db.get(totalQuery, totalParams,(err, totalResult) => {
+    db.get(totalQuery, params,(err, totalResult) => {
         if (err) {
           logger.error("Error counting records:", err);
           callback(err);
@@ -698,6 +716,7 @@ function getPaginatedData(
 // 提供 Excel 文件导出接口
 httpApp.get('/api/patients/export/:id?',async (req, res) => {
   const patientId = req.params.id && req.params.id.trim();
+  const { startTime, endTime } = req.query;
   const db = new sqlite3.Database(DATABASE_FILE);
   const tableName = TABLE_HL7_PATIENTS;
 
@@ -706,11 +725,23 @@ httpApp.get('/api/patients/export/:id?',async (req, res) => {
     return new Promise((resolve, reject) => {
 
       let query = `SELECT * FROM ${tableName}`;
+      let conditions = [];
       let params = [];
 
       if (patientId) {
-        query += ' WHERE pat_ID = ?';
+        conditions.push('pat_ID = ?');
         params.push(patientId);
+      }
+      if (startTime) {
+        conditions.push('msgDateTime >= ?');
+        params.push(startTime);
+      }
+      if (endTime) {
+        conditions.push('msgDateTime <= ?');
+        params.push(endTime);
+      }
+      if (conditions.length > 0) {
+        query += ' WHERE ' + conditions.join(' AND ');
       }
 
 
@@ -728,7 +759,7 @@ httpApp.get('/api/patients/export/:id?',async (req, res) => {
 
 
   try {
-    const filteredData = await fetchDataFromDB(patientId);
+    const filteredData = await fetchDataFromDB(patientId, startTime, endTime);
     // ===== Step 2: 创建一个新的Excel workbook 和 worksheet =====
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Patients Data Export');
