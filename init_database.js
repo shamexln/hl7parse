@@ -40,6 +40,8 @@ function initializeDatabase() {
                 param_lower_lim TEXT,
                 Limit_Violation_Type TEXT,
                 Limit_Violation_Value TEXT,
+                subid TEXT,
+                sourcechannel TEXT,
                 onset_tick TEXT,
                 alarm_duration TEXT,
                 change_time_UTC TEXT,

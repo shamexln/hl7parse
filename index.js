@@ -5,7 +5,7 @@ const winston = require("winston"); // 引入winston进行
 const path = require("path");
 const logger = require("./logger");
 const { initializeDatabase } = require("./init_database");
-const { initializeCodeSystem, getDescription, getObservationType} = require("./init_codesystem");
+const { initializeCodeSystem, getDescription, getObservationType, getSourceChannel} = require("./init_codesystem");
 const {
   DATABASE_FILE,
   TABLE_HL7_PATIENTS,
@@ -85,6 +85,7 @@ function logAndGetLastData(obxData, obxType) {
       upperLim: data.upperLim,
       limViolation: data.limViolation,
       limViolationValue: data.limViolationValue,
+      subId: data.subId,
     });
   });
 
@@ -323,7 +324,7 @@ async function savePatientData(hl7Message) {
         default: // 其他 encode 的默认处理
           logger.info('No special handling for encode:', safeValue(alarmMessage));
           // 调用封装的方法获取描述
-          alarmMessage = getDescription(alarmMessage) + getObservationType(alarmMessage);
+          alarmMessage = getDescription(alarmMessage) + '/' +  getObservationType(alarmMessage);
           break;
       }
 
@@ -331,6 +332,18 @@ async function savePatientData(hl7Message) {
 
     if (alarmMessage) {
       logger.info("Alarm Message:", { alarmMessage: safeValue(alarmMessage) });
+    }
+
+    // subid
+    const subId = targetObxCWEData?.subId || null;
+    if (subId) {
+      logger.info("Sub Id:", { subid: safeValue(subId) });
+    }
+
+    // source-channel
+     const sourcechannel = subId ? getSourceChannel(subId) : null;
+    if (sourcechannel) {
+      logger.info("Source-Channel:", { sourcechannel: safeValue(sourcechannel) });
     }
 
     logInputParameters({
@@ -362,6 +375,8 @@ async function savePatientData(hl7Message) {
           targetObxNMData?.observationValue,
           targetObxCWEData?.limViolation,
       ),
+      subId,
+      sourcechannel,
       onset_tick: null,
       alarm_duration: null,
       change_time_UTC: null,
@@ -401,9 +416,9 @@ async function savePatientData(hl7Message) {
         db,
         `INSERT INTO ${TABLE_HL7_PATIENTS} (device_id, local_time, Date, Time, Hour, bed_label, pat_ID, mon_unit, care_unit, alarm_grade,
                                    alarm_state, Alarm_Grade_2, alarm_message, param_id, param_description, param_value, param_uom,
-                                   param_upper_lim, param_lower_lim, Limit_Violation_Type, Limit_Violation_Value, onset_tick,
+                                   param_upper_lim, param_lower_lim, Limit_Violation_Type, Limit_Violation_Value, subid, sourcechannel, onset_tick,
                                    alarm_duration, change_time_UTC, change_tick, aborted,
-                                       raw_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                                       raw_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,
                                                                                                                  ?)`,
         [
           safeValue(deviceGUID),
@@ -427,6 +442,8 @@ async function savePatientData(hl7Message) {
           safeGetProperty(targetObxNMData, 'lowLim'),
           limViolation,
           limViolationValue,
+          subId,
+          sourcechannel,
           null,
           null,
           null,
@@ -733,11 +750,11 @@ httpApp.get('/api/patients/export/:id?',async (req, res) => {
         params.push(patientId);
       }
       if (startTime) {
-        conditions.push('msgDateTime >= ?');
+        conditions.push('Date >= ?');
         params.push(startTime);
       }
       if (endTime) {
-        conditions.push('msgDateTime <= ?');
+        conditions.push('Date <= ?');
         params.push(endTime);
       }
       if (conditions.length > 0) {

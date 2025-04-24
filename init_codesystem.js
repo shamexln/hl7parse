@@ -17,6 +17,7 @@ const logger = winston.createLogger({
 
 const encodeToDescriptionMap = new Map();
 const encodeToObservationTypeMap = new Map();
+const subidToSourceChannelMap = new Map();
 
 function getFilePath(filename) {
     // 尝试多种可能的路径
@@ -84,6 +85,13 @@ async function initializeCodeSystem(xmlData= CODE_SYSTEM) {
                     const observationtype = tag.observationtype[0];
                     encodeToObservationTypeMap.set(encode, observationtype);
                 }
+
+                if (tag.subid && tag.subid[0] && tag.source && tag.source[0] && tag.channel && tag.channel[0]) {
+                    const subid = tag.subid[0];
+                    const source = tag.source[0];
+                    const channel = tag.channel[0];
+                    subidToSourceChannelMap.set(subid, source + '/' + channel);
+                }
             });
             logger.info('Code system initialized successfully.');
         }
@@ -113,9 +121,13 @@ function getObservationType(encode) {
     return encodeToObservationTypeMap.get(encode);
 }
 
+function getSourceChannel(subid) {
+    return subidToSourceChannelMap.get(subid);
+}
 
 module.exports = {
     initializeCodeSystem,
     getDescription,
-    getObservationType
+    getObservationType,
+    getSourceChannel
 };

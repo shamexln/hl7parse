@@ -1,0 +1,7 @@
+{
+  "input": "index.js",
+  "output": "hl7parse.exe",
+  "target": "hl7parse",
+  "visualStudio": "2022"
+}
+
