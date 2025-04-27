@@ -6,7 +6,7 @@ module.exports = {
     CODE_SYSTEM: '300.xml',
     // Winston log config
     LOG_CONFIG: {
-        level: 'debug',
+        level: 'info',
         format: {
             timestampFormat: 'YYYY-MM-DD HH:mm:ss',
             outputFormat: 'json',
@@ -14,7 +14,14 @@ module.exports = {
         },
         file: {
             errorLog: path.join(process.cwd(), 'logs', 'error.log'),
-            combinedLog: path.join(process.cwd(), 'logs', 'combined.log')
+            combinedLog: path.join(process.cwd(), 'logs', 'combined.log'),
+            maxsize: 5242880, // 5MB
+            maxFiles: 5,
+            tailable: true
+        },
+        deduplication: {
+            enabled: true,
+            timeWindow: 60000 // 1 minute in milliseconds
         }
     }
 
