@@ -14,7 +14,8 @@
 3. "public/**",
    "public/browser/**",
    "node_modules/sqlite3/**/*",
-   "300.xml"
+   "./300.xml",
+   "./port-config.json"
    ],
    "targets": [
    "node18-win-x64"

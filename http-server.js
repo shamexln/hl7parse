@@ -6,7 +6,6 @@ const sqlite3 = require("sqlite3").verbose();
 const logger = require("./logger");
 const { DATABASE_FILE, TABLE_HL7_PATIENTS } = require("./config");
 const { createPatientExcelWorkbook } = require("./export");
-const { checkHL7MessageConsistency, getReceivedHL7Message } = require("./index");
 const { getConnectionStats, getClientInfo } = require("./tcp-server");
 
 /**
@@ -282,6 +281,31 @@ function createHttpApp() {
       res.status(500).json({ 
         success: false, 
         message: "Failed to update port configuration", 
+        error: error.message 
+      });
+    }
+  });
+
+  // API endpoint: Get port configuration
+  app.get("/api/port-config", (req, res) => {
+    try {
+      const portConfigPath = path.join(process.cwd(), 'port-config.json');
+
+      // Read current configuration
+      const currentConfig = JSON.parse(fs.readFileSync(portConfigPath, 'utf8'));
+
+      // Return success response
+      res.json({ 
+        success: true, 
+        config: currentConfig
+      });
+
+      logger.info(`Port configuration retrieved via API`);
+    } catch (error) {
+      logger.error(`Error retrieving port configuration: ${error.message}`);
+      res.status(500).json({ 
+        success: false, 
+        message: "Failed to retrieve port configuration", 
         error: error.message 
       });
     }
