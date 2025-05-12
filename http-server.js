@@ -7,6 +7,16 @@ const logger = require("./logger");
 const { DATABASE_FILE, TABLE_HL7_PATIENTS } = require("./config");
 const { createPatientExcelWorkbook } = require("./export");
 const { getConnectionStats, getClientInfo } = require("./tcp-server");
+const { getAllTags } = require("./init_codesystem");
+const { 
+  createCustomTagMapping, 
+  getCustomTagMapping, 
+  updateCustomTagMapping, 
+  deleteCustomTagMapping, 
+  getAllCustomTagMappingNames,
+  initializeCustomTagMappings,
+  cloneCustomTagMapping
+} = require("./custom_tags");
 
 /**
  * Creates an Express application for the HTTP API
@@ -306,6 +316,287 @@ function createHttpApp() {
       res.status(500).json({ 
         success: false, 
         message: "Failed to retrieve port configuration", 
+        error: error.message 
+      });
+    }
+  });
+
+  // API endpoint: Get all tags from 300.xml (read-only default mapping)
+  app.get("/api/default/tags", (req, res) => {
+    try {
+      const tags = getAllTags();
+
+      // Return success response
+      res.json({ 
+        success: true, 
+        tags: tags
+      });
+
+      logger.info(`Default tags retrieved via API`);
+    } catch (error) {
+      logger.error(`Error retrieving default tags: ${error.message}`);
+      res.status(500).json({ 
+        success: false, 
+        message: "Failed to retrieve default tags", 
+        error: error.message 
+      });
+    }
+  });
+
+  // API endpoint: Initialize custom tag mappings from a specific file
+  app.post("/api/custom-tags/initialize", (req, res) => {
+    try {
+      const { filename } = req.body;
+
+      if (!filename) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Filename is required" 
+        });
+      }
+
+      // Initialize custom tag mappings from the specified file
+      initializeCustomTagMappings(filename);
+
+      // Return success response
+      res.json({ 
+        success: true, 
+        message: `Custom tag mappings initialized from ${filename}`
+      });
+
+      logger.info(`Custom tag mappings initialized from ${filename} via API`);
+    } catch (error) {
+      logger.error(`Error initializing custom tag mappings: ${error.message}`);
+      res.status(500).json({ 
+        success: false, 
+        message: "Failed to initialize custom tag mappings", 
+        error: error.message 
+      });
+    }
+  });
+
+  // API endpoint: List all custom tag mappings
+  app.get("/api/custom-tags", (req, res) => {
+    try {
+      const mappingNames = getAllCustomTagMappingNames();
+
+      // Return success response
+      res.json({ 
+        success: true, 
+        mappings: mappingNames
+      });
+
+      logger.info(`All custom tag mappings list retrieved via API`);
+    } catch (error) {
+      logger.error(`Error retrieving custom tag mappings list: ${error.message}`);
+      res.status(500).json({ 
+        success: false, 
+        message: "Failed to retrieve custom tag mappings list", 
+        error: error.message 
+      });
+    }
+  });
+
+  // API endpoint: Get custom tag mapping by name
+  app.get("/api/:mappingName/tags", (req, res) => {
+    try {
+      const { mappingName } = req.params;
+
+      // Get the custom mapping
+      const result = getCustomTagMapping(mappingName);
+
+      if (!result.success) {
+        return res.status(404).json(result);
+      }
+
+      // Return success response
+      res.json({ 
+        success: true, 
+        tags: result.mapping.tags,
+        mappingName: mappingName,
+        createdAt: result.mapping.createdAt,
+        updatedAt: result.mapping.updatedAt
+      });
+
+      logger.info(`Custom tags for mapping "${mappingName}" retrieved via API`);
+    } catch (error) {
+      logger.error(`Error retrieving custom tags: ${error.message}`);
+      res.status(500).json({ 
+        success: false, 
+        message: "Failed to retrieve custom tags", 
+        error: error.message 
+      });
+    }
+  });
+
+  // API endpoint: Create a new custom tag mapping
+  app.post("/api/custom-tags", (req, res) => {
+    try {
+      const { name, tags, filename } = req.body;
+
+      if (!name) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Mapping name is required" 
+        });
+      }
+
+      // Create the custom mapping
+      // Use the provided filename or default to 'custom_tags.json'
+      const result = createCustomTagMapping(name, tags, filename);
+
+      if (!result.success) {
+        return res.status(400).json(result);
+      }
+
+      // Return success response
+      res.status(201).json(result);
+
+      logger.info(`New custom tag mapping "${name}" created via API${filename ? ` using file ${filename}` : ''}`);
+    } catch (error) {
+      logger.error(`Error creating custom tag mapping: ${error.message}`);
+      res.status(500).json({ 
+        success: false, 
+        message: "Failed to create custom tag mapping", 
+        error: error.message 
+      });
+    }
+  });
+
+  // API endpoint: Update an existing custom tag mapping
+  app.put("/api/custom-tags/:name", (req, res) => {
+    try {
+      const { name } = req.params;
+      const { tags, filename } = req.body;
+
+      if (!tags) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Tags are required" 
+        });
+      }
+
+      // Update the custom mapping
+      // Use the provided filename or default to 'custom_tags.json'
+      const result = updateCustomTagMapping(name, tags, filename);
+
+      if (!result.success) {
+        return res.status(404).json(result);
+      }
+
+      // Return success response
+      res.json(result);
+
+      logger.info(`Custom tag mapping "${name}" updated via API${filename ? ` using file ${filename}` : ''}`);
+    } catch (error) {
+      logger.error(`Error updating custom tag mapping: ${error.message}`);
+      res.status(500).json({ 
+        success: false, 
+        message: "Failed to update custom tag mapping", 
+        error: error.message 
+      });
+    }
+  });
+
+  // API endpoint: Delete a custom tag mapping
+  app.delete("/api/custom-tags/:name", (req, res) => {
+    try {
+      const { name } = req.params;
+      // For DELETE requests, query parameters are used instead of body
+      const { filename } = req.query;
+
+      // Delete the custom mapping
+      // Use the provided filename or default to 'custom_tags.json'
+      const result = deleteCustomTagMapping(name, filename);
+
+      if (!result.success) {
+        return res.status(404).json(result);
+      }
+
+      // Return success response
+      res.json(result);
+
+      logger.info(`Custom tag mapping "${name}" deleted via API${filename ? ` from file ${filename}` : ''}`);
+    } catch (error) {
+      logger.error(`Error deleting custom tag mapping: ${error.message}`);
+      res.status(500).json({ 
+        success: false, 
+        message: "Failed to delete custom tag mapping", 
+        error: error.message 
+      });
+    }
+  });
+
+  // API endpoint: Clone a custom tag mapping
+  app.post("/api/custom-tags/clone", (req, res) => {
+    try {
+      const { sourceName, targetName } = req.body;
+
+      if (!sourceName) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Source mapping name is required" 
+        });
+      }
+
+      if (!targetName) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Target mapping name is required" 
+        });
+      }
+
+      // Clone the custom mapping
+      // Use targetName as filename
+      const result = cloneCustomTagMapping(sourceName, targetName, targetName);
+
+      if (!result.success) {
+        return res.status(400).json(result);
+      }
+
+      // Return success response
+      res.status(201).json(result);
+
+      logger.info(`Custom tag mapping "${sourceName}" cloned to "${targetName}" via API using file ${targetName}`);
+    } catch (error) {
+      logger.error(`Error cloning custom tag mapping: ${error.message}`);
+      res.status(500).json({ 
+        success: false, 
+        message: "Failed to clone custom tag mapping", 
+        error: error.message 
+      });
+    }
+  });
+
+  // API endpoint: Delete a custom tag mapping (alternative endpoint)
+  app.post("/api/custom-tags/delete", (req, res) => {
+    try {
+      const { name } = req.body;
+
+      if (!name) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Mapping name is required" 
+        });
+      }
+
+      // Delete the custom mapping
+      // Use name as the filename
+      const result = deleteCustomTagMapping(name, name);
+
+      if (!result.success) {
+        return res.status(404).json(result);
+      }
+
+      // Return success response
+      res.json(result);
+
+      logger.info(`Custom tag mapping "${name}" deleted via API from file ${name}`);
+    } catch (error) {
+      logger.error(`Error deleting custom tag mapping: ${error.message}`);
+      res.status(500).json({ 
+        success: false, 
+        message: "Failed to delete custom tag mapping", 
         error: error.message 
       });
     }

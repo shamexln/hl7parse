@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const logger = require('./logger');
+const { getFilePath } = require('./init_codesystem');
 
 /**
  * Configuration for the combined load test
@@ -12,16 +13,16 @@ const config = {
   messageCount: 50,
   templateFile: '300HL7_temp1.hl7',
   outputDir: './generated-messages',
-  
+
   // Test parameters
   numClients: 10,
   messagesPerClient: 100,
   delayBetweenMessages: 10,
-  
+
   // Server configuration
   host: 'localhost',
   port: 8080,
-  
+
   // Performance tracking
   logInterval: 1000,
 };
@@ -65,12 +66,12 @@ process.argv.slice(2).forEach(arg => {
 function runScript(scriptPath, args = []) {
   return new Promise((resolve, reject) => {
     logger.info(`Running script: ${scriptPath} ${args.join(' ')}`);
-    
+
     const process = spawn('node', [scriptPath, ...args], {
       stdio: 'inherit',
       shell: true
     });
-    
+
     process.on('close', (code) => {
       if (code === 0) {
         logger.info(`Script ${scriptPath} completed successfully`);
@@ -81,7 +82,7 @@ function runScript(scriptPath, args = []) {
         reject(error);
       }
     });
-    
+
     process.on('error', (err) => {
       logger.error(`Failed to start script ${scriptPath}:`, err);
       reject(err);
@@ -98,15 +99,15 @@ async function generateMessages() {
     logger.info('Message generation skipped (generate=false)');
     return;
   }
-  
+
   logger.info('Generating HL7 test messages...');
-  
+
   const args = [
     `count=${config.messageCount}`,
     `template=${config.templateFile}`,
     `output=${config.outputDir}`
   ];
-  
+
   await runScript('./generate-hl7-messages.js', args);
 }
 
@@ -116,29 +117,29 @@ async function generateMessages() {
  */
 async function runMultiClientTest() {
   logger.info('Running multi-client test...');
-  
+
   // If we generated messages, update the multi-client-test.js to use them
   if (config.generateMessages) {
     // Create a temporary configuration file for the test
-    const tempConfigPath = path.join(__dirname, 'temp-test-config.js');
-    
+    const tempConfigPath = getFilePath('temp-test-config.js');
+
     try {
       // Get list of generated message files
-      const messageDir = path.join(__dirname, config.outputDir);
+      const messageDir = getFilePath(config.outputDir);
       let messageFiles = [];
-      
+
       if (fs.existsSync(messageDir)) {
         messageFiles = fs.readdirSync(messageDir)
           .filter(file => file.endsWith('.hl7'))
           .map(file => path.join(config.outputDir, file));
       }
-      
+
       if (messageFiles.length === 0) {
         logger.warn('No generated message files found. Using default message files.');
       } else {
         logger.info(`Found ${messageFiles.length} generated message files to use for testing.`);
       }
-      
+
       // Create config content
       const configContent = `
 // Temporary configuration for multi-client test
@@ -146,12 +147,12 @@ module.exports = {
   // Server configuration
   host: '${config.host}',
   port: ${config.port},
-  
+
   // Test parameters
   numClients: ${config.numClients},
   messagesPerClient: ${config.messagesPerClient},
   delayBetweenMessages: ${config.delayBetweenMessages},
-  
+
   // Message configuration
   messageFiles: ${messageFiles.length > 0 ? 
     JSON.stringify(messageFiles, null, 2) : 
@@ -163,23 +164,23 @@ module.exports = {
     'msg-03272025-121412-440.hl7',
     'msg-03272025-121412-441.hl7'
   ]`},
-  
+
   // Performance tracking
   logInterval: ${config.logInterval},
 };
       `;
-      
+
       // Write config file
       fs.writeFileSync(tempConfigPath, configContent);
       logger.info('Created temporary test configuration file.');
-      
+
       // Run the test with the config file
       await runScript('./multi-client-test.js', [`config=${tempConfigPath}`]);
-      
+
       // Clean up temp file
       fs.unlinkSync(tempConfigPath);
       logger.info('Removed temporary test configuration file.');
-      
+
     } catch (error) {
       logger.error('Error during test configuration:', error);
       throw error;
@@ -192,7 +193,7 @@ module.exports = {
       `messages=${config.messagesPerClient}`,
       `delay=${config.delayBetweenMessages}`
     ];
-    
+
     await runScript('./multi-client-test.js', args);
   }
 }
@@ -202,14 +203,14 @@ module.exports = {
  */
 async function runLoadTest() {
   logger.info('Starting HL7 load test with configuration:', config);
-  
+
   try {
     // Step 1: Generate messages if enabled
     await generateMessages();
-    
+
     // Step 2: Run multi-client test
     await runMultiClientTest();
-    
+
     logger.info('Load test completed successfully.');
   } catch (error) {
     logger.error('Load test failed:', error);

@@ -1,0 +1,5 @@
+{"level":"info","message":"No custom tag mappings file found at custom_tags.json, starting with empty mappings","timestamp":"2025-05-11 07:57:03"}
+{"level":"info","message":"Loaded port configuration: TCP port 3359, HTTP port 8978","timestamp":"2025-05-11 07:57:03"}
+{"level":"info","message":"TCP interface listening on 3359","timestamp":"2025-05-11 07:57:03"}
+{"level":"info","message":"HTTP API listening on port 8978\n","timestamp":"2025-05-11 07:57:03"}
+{"level":"info","message":"HTTP API server started on port 8978\n","timestamp":"2025-05-11 07:57:03"}

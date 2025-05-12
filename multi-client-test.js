@@ -2,6 +2,7 @@ const fs = require('fs');
 const net = require('net');
 const path = require('path');
 const logger = require('./logger');
+const { getFilePath } = require('./init_codesystem');
 
 /**
  * Configuration for the test
@@ -85,7 +86,7 @@ function loadHL7Messages() {
 
   for (const fileName of config.messageFiles) {
     try {
-      const filePath = path.join(__dirname, fileName);
+      const filePath = getFilePath(fileName);
       if (fs.existsSync(filePath)) {
         const content = fs.readFileSync(filePath, 'utf8');
         messages.push(content);

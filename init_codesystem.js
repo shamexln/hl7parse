@@ -18,6 +18,7 @@ const logger = winston.createLogger({
 const encodeToDescriptionMap = new Map();
 const encodeToObservationTypeMap = new Map();
 const subidToSourceChannelMap = new Map();
+let allTags = [];
 
 function getFilePath(filename) {
     // 尝试多种可能的路径
@@ -73,6 +74,18 @@ async function initializeCodeSystem(xmlData= CODE_SYSTEM) {
 
         // 将 encode 和 description 存入 Map
         if (Array.isArray(tags)) {
+            // 存储所有标签
+            allTags = tags.map(tag => {
+                // 将每个标签的属性从数组转换为单个值
+                const processedTag = {};
+                Object.keys(tag).forEach(key => {
+                    if (Array.isArray(tag[key]) && tag[key].length > 0) {
+                        processedTag[key] = tag[key][0];
+                    }
+                });
+                return processedTag;
+            });
+
             tags.forEach(tag => {
                 if (tag.encode && tag.encode[0] && tag.description && tag.description[0]) {
                     const encode = tag.encode[0];
@@ -125,9 +138,14 @@ function getSourceChannel(subid) {
     return subidToSourceChannelMap.get(subid);
 }
 
+function getAllTags() {
+    return allTags;
+}
+
 module.exports = {
     initializeCodeSystem,
     getDescription,
     getObservationType,
-    getSourceChannel
+    getSourceChannel,
+    getAllTags
 };
