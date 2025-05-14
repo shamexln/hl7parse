@@ -2,7 +2,7 @@ const sqlite3 = require("sqlite3").verbose();
 const logger = require("../logger");
 const { DATABASE_FILE, TABLE_HL7_PATIENTS } = require("../config");
 const helpFunctions = require("../helper");
-const { getDescription, getObservationType, getSourceChannel } = require("../init_codesystem");
+const { getDescription, getObservationType, getSourceChannel } = require("../codesystem");
 const { logInputParameters } = require("./logging");
 
 /**

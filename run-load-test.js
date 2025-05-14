@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const logger = require('./logger');
-const { getFilePath } = require('./init_codesystem');
+const { getFilePath } = require('./codesystem');
 
 /**
  * Configuration for the combined load test

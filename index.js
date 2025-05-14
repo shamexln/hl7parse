@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const logger = require('./logger');
 const { initializeDatabase } = require('./init_database');
-const { initializeCodeSystem } = require('./init_codesystem');
+const { initializeCodeSystem } = require('./codesystem');
 const { createTcpServer, restartTcpServer, isValidPort } = require('./tcp-server');
 const { startHttpServer, restartHttpServer } = require('./http-server');
 

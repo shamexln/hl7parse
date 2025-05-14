@@ -2,7 +2,7 @@ const fs = require('fs');
 const net = require('net');
 const path = require('path');
 const logger = require('./logger');
-const { getFilePath } = require('./init_codesystem');
+const { getFilePath } = require('./codesystem');
 
 /**
  * Configuration for the test

@@ -3,7 +3,7 @@ const path = require('path');
 module.exports = {
     DATABASE_FILE: path.join(process.cwd(), 'hl7_messages.db'),
     TABLE_HL7_PATIENTS: 'hl7_patients',
-    CODE_SYSTEM: '300.xml',
+    CODE_SYSTEM: '300_map.xml',
     // Winston log config
     LOG_CONFIG: {
         level: 'info',
@@ -23,6 +23,8 @@ module.exports = {
             enabled: true,
             timeWindow: 60000 // 1 minute in milliseconds
         }
-    }
+    },
+    LISTCODESYSTEM_API: '/api/codesystem',
+    CODESYSTEMTAGS_API: '/api/codesystem/:name',
 
 };
