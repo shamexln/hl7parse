@@ -1,9 +1,14 @@
-const { CODE_SYSTEM } = require('./config');
+const { CODE_SYSTEM, DATABASE_FILE, TABLE_HL7_PATIENTS, TABLE_HL7_CODESYSTEMS, TABLE_HL7_CODESYSTEM_300} = require('./config');
 const fs = require('fs');
 const xml2js = require('xml2js');
 const winston = require("winston");
 const parser = new xml2js.Parser();
 const path = require('path');
+const util = require('util');
+const {initializeDatabase} = require("./init_database");
+const sqlite3 = require('sqlite3').verbose();
+// Add this line to import the crypto module
+const crypto = require('crypto');
 
 // 日志配置示例（仅供参考，你项目中可能已有此配置）
 const logger = winston.createLogger({
@@ -15,9 +20,7 @@ const logger = winston.createLogger({
     transports: [new winston.transports.Console()]
 });
 
-const encodeToDescriptionMap = new Map();
-const encodeToObservationTypeMap = new Map();
-const subidToSourceChannelMap = new Map();
+let encodeToTagMap = new Map();
 let allTags = [];
 // Store  mappings in memory
 // Structure: { [mappingName]: { tags: [...], descrMap:encodeToDescriptionMap, obsTypMap:encodeToObservationTypeMap, srcChaMap:subidToSourceChannelMap,  createdAt: Date, updatedAt: Date } }
@@ -41,12 +44,162 @@ function getFilePath(filename) {
     return path.join(__dirname, filename);
 }
 
+async function updateCodesysteminDB(data, detailtablename = TABLE_HL7_CODESYSTEM_300, codesystemname = '300') {
+    const db = new sqlite3.Database(DATABASE_FILE);
+    try {
+        // 将 get 和 run 方法转为 Promise 形式
+        const dbGet = util.promisify(db.get).bind(db);
+        const dbRun = util.promisify(db.run).bind(db);
+        // 查询总记录数
+        const countRow = await dbGet(`SELECT COUNT(*) AS count FROM ${TABLE_HL7_CODESYSTEMS}`);
+        const totalCount = countRow.count;
+        logger.info(`当前表总记录数为：${totalCount}`);
+
+        // 查询是否已存在
+        const row = await dbGet(
+            `SELECT * FROM ${TABLE_HL7_CODESYSTEMS} WHERE codesystem_name = ?`,
+            [codesystemname]
+        );
+
+        const xmlData = data.toString();
+
+        if (row) {
+            // 已存在则更新
+            await dbRun(
+                `UPDATE ${TABLE_HL7_CODESYSTEMS} SET codesystem_filename = ?,  codesystem_tablename = ?,  codesystem_xml = ? WHERE codesystem_name = ?`,
+                [`${codesystemname}_map.xml`, detailtablename, xmlData, codesystemname]
+            );
+            logger.info(`Codesystem ${codesystemname} updated successfully`);
+        } else {
+            // 不存在则插入
+            await dbRun(
+                `INSERT INTO ${TABLE_HL7_CODESYSTEMS} (codesystem_id, codesystem_name, codesystem_filename, codesystem_tablename, codesystem_isdeault, codesystem_iscurrent, codesystem_xml) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                [totalCount, codesystemname, `${codesystemname}_map.xml`, detailtablename, 'true', 'true', xmlData]
+            );
+            logger.info(`Codesystem ${codesystemname} inserted successfully`);
+        }
+
+    }catch (err) {
+        logger.error("Database operation failed\n:", err);
+    } finally {
+        db.close((closeErr) => {
+            if (closeErr) {
+                logger.error("Database close failed\n:", closeErr);
+            }
+        });
+    }
+
+}
+
+async function updateDetailCodeSystem(tablename, tags) {
+    const db = new sqlite3.Database(DATABASE_FILE);
+    try {
+        const dbGet = util.promisify(db.get).bind(db);
+        const dbRun = util.promisify(db.run).bind(db);
+
+        await dbRun(
+            `CREATE TABLE IF NOT EXISTS ${tablename} (
+                                                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                    tagkey TEXT,
+                                                    observationtype TEXT,
+                                                    datatype TEXT,
+                                                    encode TEXT,
+                                                    parameterlabel TEXT,
+                                                    encodesystem TEXT,
+                                                    subid TEXT,
+                                                    description TEXT,
+                                                    source TEXT,
+                                                    mds TEXT,
+                                                    mdsid TEXT,
+                                                    vmd TEXT,
+                                                    vmdid TEXT,
+                                                    channel TEXT,
+                                                    channelid TEXT
+             )`
+        );
+
+
+
+
+        for (const item of tags) {
+
+            const row = await dbGet(
+                `SELECT tagkey FROM ${tablename} WHERE tagkey = ?`,
+                [item.tagkey]
+            );
+
+            if (row) {
+                // 存在，执行 UPDATE
+                await dbRun(
+                    `UPDATE ${tablename}
+                SET observationtype = ?, datatype = ?, encode = ?, parameterlabel = ?, encodesystem = ?, subid = ?, description = ?, source = ?, mds = ?, mdsid = ?, vmd = ?, vmdid = ?, channel = ?, channelid = ?
+             WHERE tagkey = ?`,
+                    [item.observationtype, item.datatype, item.encode, item.parameterlabel, item.encodesystem, item.subid, item.description,
+                        item.source, item.mds, item.mdsid, item.vmd, item.vmdid, item.channel, item.channelid, item.tagkey]
+                );
+                logger.info(`Table ${tablename} updated successfully`);
+            } else {
+                // 不存在，执行 INSERT
+                await dbRun(
+                    `INSERT INTO ${tablename}
+                (tagkey, observationtype, datatype, encode, parameterlabel, encodesystem, subid, description, source, mds, mdsid, vmd, vmdid, channel, channelid)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [item.tagkey, item.observationtype, item.datatype, item.encode, item.parameterlabel, item.encodesystem, item.subid,
+                        item.description, item.source, item.mds, item.mdsid, item.vmd, item.vmdid, item.channel, item.channelid]
+                );
+                logger.info(`Table ${tablename} inserted successfully`);
+            }
+
+        }
+
+        // update value in  encodeMap with new tags
+        for (const tag of tags) {
+            const result = encodeToTagMap.get(tag.encode) || [];
+            const matchingResult = result.find(item =>
+                 tag.encode === item.encode && tag.subid === item.subid
+            );
+            if (matchingResult) {
+                matchingResult.description = tag.description;
+            }
+
+        }
+
+
+
+    }catch (err) {
+        logger.error("Database operation failed\n:", err);
+    } finally {
+        db.close((closeErr) => {
+            if (closeErr) {
+                logger.error("Database close failed\n:", closeErr);
+            }
+        });
+    }
+}
+
+function buildSpecificKeyIndex(tags, fields) {
+    const index = new Map();
+    tags.forEach(tag => {
+        fields.forEach(field => {
+            const val = tag[field];
+            if (val !== undefined) {
+                const key = String(val).trim();
+                if (!index.has(key)) index.set(key, []);
+                index.get(key).push(tag);
+            }
+        });
+    });
+    return index;
+}
+
 async function initializeCodeSystem(xmlData= CODE_SYSTEM) {
     try {
         let bomRemovedData;
         const xmlPath = getFilePath(xmlData);
 
         const data = await fs.promises.readFile(xmlPath);
+        // write the raw data with default name 300 into db
+        await updateCodesysteminDB(data);
         bomRemovedData = data.toString().replace("\ufeff", "");
 
 
@@ -81,6 +234,8 @@ async function initializeCodeSystem(xmlData= CODE_SYSTEM) {
             allTags = tags.map(tag => {
                 // 将每个标签的属性从数组转换为单个值
                 const processedTag = {};
+                // Add a random UUID as tagkey
+               /* processedTag.tagkey = crypto.randomUUID().split('-')[0];*/
                 Object.keys(tag).forEach(key => {
                     if (Array.isArray(tag[key]) && tag[key].length > 0) {
                         processedTag[key] = tag[key][0];
@@ -89,26 +244,8 @@ async function initializeCodeSystem(xmlData= CODE_SYSTEM) {
                 return processedTag;
             });
 
-            tags.forEach(tag => {
-                if (tag.encode && tag.encode[0] && tag.description && tag.description[0]) {
-                    const encode = tag.encode[0];
-                    const description = tag.description[0];
-                    encodeToDescriptionMap.set(encode, description);
-                }
+            encodeToTagMap = buildSpecificKeyIndex(allTags, ['encode']);
 
-                if (tag.encode && tag.encode[0] && tag.observationtype && tag.observationtype[0]) {
-                    const encode = tag.encode[0];
-                    const observationtype = tag.observationtype[0];
-                    encodeToObservationTypeMap.set(encode, observationtype);
-                }
-
-                if (tag.subid && tag.subid[0] && tag.source && tag.source[0] && tag.channel && tag.channel[0]) {
-                    const subid = tag.subid[0];
-                    const source = tag.source[0];
-                    const channel = tag.channel[0];
-                    subidToSourceChannelMap.set(subid, source + '/' + channel);
-                }
-            });
 
             // Create the new mapping
             const now = new Date();
@@ -125,14 +262,14 @@ async function initializeCodeSystem(xmlData= CODE_SYSTEM) {
 
             CodeSystemMappings[name] = {
                 tags: allTags,
-                descrMap: encodeToDescriptionMap,
-                obsTypMap: encodeToObservationTypeMap,
-                srcChaMap: subidToSourceChannelMap,
                 createdAt: now,
                 updatedAt: now
             };
-
+            // only for re-write to xml file, if there is new key in code
+            //saveCodeSystemToFile(CodeSystemMappings[name], xmlData);
+            await updateDetailCodeSystem(TABLE_HL7_CODESYSTEM_300,  CodeSystemMappings[name].tags);
             logger.info('Code system initialized successfully.');
+
         }
         else {
             logger.error('Tags element is not an array:', tags);
@@ -152,67 +289,57 @@ function parseXML(xmlData) {
         });
     });
 }
-function getDescription(encode) {
-    return encodeToDescriptionMap.get(encode);
+function getDescription(encode, subid="") {
+    const result = encodeToTagMap.get(encode) || [];
+    if (subid) {
+        // Find the first tag that matches both encode and subid
+        const matchingTag = result.find(encodes =>
+            encodes.encode && encodes.subid === subid && encodes.encode === encode
+        );
+        return matchingTag ? matchingTag.description : undefined;
+    } else {
+        // Find the first tag that matches encode
+        const matchingTag = result.find(encodes =>
+            encodes.encode && encodes.encode === encode
+        );
+        return matchingTag ? matchingTag.description : undefined;
+    }
 }
 
-function getObservationType(encode) {
-    return encodeToObservationTypeMap.get(encode);
+function getObservationType(encode, subid="") {
+    const result = encodeToTagMap.get(encode) || [];
+    if (subid) {
+        // Find the first tag that matches both encode and subid
+        const matchingTag = result.find(encodes =>
+            encodes.encode && encodes.subid === subid && encodes.encode === encode
+        );
+        return matchingTag ? matchingTag.observationtype : undefined;
+    } else {
+        // Find the first tag that matches encode
+        const matchingTag = result.find(encodes =>
+            encodes.encode && encodes.encode === encode
+        );
+        return matchingTag ? matchingTag.observationtype : undefined;
+    }
 }
 
-function getSourceChannel(subid) {
-    return subidToSourceChannelMap.get(subid);
+function getSourceChannel(encode, subid) {
+    const result = encodeToTagMap.get(encode) || [];
+    if (subid) {
+        // Find the first tag that matches both encode and subid
+        const matchingTag = result.find(encodes =>
+            encodes.encode && encodes.subid === subid && encodes.encode === encode
+        );
+        return matchingTag ? encodes.source + '/' + encodes.channel : undefined;
+    } else {
+      return undefined;
+    }
+
 }
 
 function getAllTags() {
     return allTags;
 }
-
-
-/**
- * Clone a custom tag mapping
- * @param {string} sourceName - Name of the source mapping to clone
- * @param {string} targetName - Name for the new cloned mapping
- * @param {string} filename - Name of the custom tags file (optional)
- * @returns {Object} - Result object with success status and message
- */
-function cloneMapping(sourceName, targetName, filename = 'custom_tags.json') {
-    // Validate source name
-    if (!CodeSystemMappings[sourceName]) {
-        return { success: false, message: 'Source mapping not found' };
-    }
-
-    // Validate target name
-    if (!targetName || typeof targetName !== 'string' || targetName.trim() === '') {
-        return { success: false, message: 'Invalid target mapping name' };
-    }
-
-    // Check if target name already exists
-    if (CodeSystemMappings[targetName]) {
-        return { success: false, message: 'A mapping with the target name already exists' };
-    }
-
-    // Create a deep copy of the source mapping's tags
-    const clonedTags = JSON.parse(JSON.stringify(CodeSystemMappings[sourceName].tags));
-
-    // Create the new mapping
-    const now = new Date();
-    CodeSystemMappings[targetName] = {
-        tags: clonedTags,
-        createdAt: now,
-        updatedAt: now
-    };
-
-    // Save to disk
-    saveMappings(filename);
-
-    return {
-        success: true,
-        message: `Custom tag mapping "${sourceName}" cloned to "${targetName}" successfully`,
-        mapping: CodeSystemMappings[targetName]
-    };
-}
-
 /**
  * Function to get the list of xml file
  * @param {string} filepath - default path
@@ -252,9 +379,6 @@ function createCodeSystem(name, codesystem , filename = 'custom_tags.json') {
     const now = new Date();
     CodeSystemMappings[name] = {
         tags: codesystem.tags,
-        descrMap: codesystem.encodeToDescriptionMap,
-        obsTypMap: codesystem.encodeToObservationTypeMap,
-        srcChaMap: codesystem.subidToSourceChannelMap,
         createdAt: now,
         updatedAt: now
     };
@@ -274,19 +398,83 @@ function createCodeSystem(name, codesystem , filename = 'custom_tags.json') {
  * @param {string} filename - Name of the custom tags file (optional)
  */
 function saveCodeSystemToFile(codesystem, filename = 'custom_tags.json') {
-    try {
-        const filePath = getCodeSystemFilePath(filename);
-        fs.writeFileSync(filePath, JSON.stringify(codesystem.tags, null, 2));
-        logger.info(`Custom tag mappings saved to ${filename}`);
-    } catch (error) {
-        logger.error(`Error saving custom tag mappings to ${filename}: ${error.message}`);
+    if (!codesystem || !Array.isArray(codesystem.tags)) {
+        logger.error('codesystem 参数无效或缺少 tags 数组');
+        return;
     }
+    const { create } = require("xmlbuilder2");
+    try {
+        // 构建 XML
+        const root = create({ version: "1.0", encoding: "UTF-8" }).ele("root");
+        codesystem.tags.forEach(item => {
+            const tag = root.ele("tag");
+            Object.entries(item).forEach(([key, value]) => {
+                tag.ele(key).txt(value);
+            });
+        });
+        const xmlString = root.end({ prettyPrint: true });
+
+        // 写入文件
+        const filePath = getCodeSystemFilePath(filename);
+        fs.writeFileSync(filePath, '\uFEFF' + xmlString, 'utf8');
+        logger.info(`Code system saved to  ${filePath}`);
+    } catch (error) {
+        logger.error(`save code system into file fail: ${error.message}`);
+    }
+
 }
 
 // Function to get the path for custom tag mappings file
 function getCodeSystemFilePath(filename = 'custom_tags.json') {
     return path.join(process.cwd(), filename);
 }
+/**
+ * Get the table name for a codesystem by ID
+ * @param {string} id - Codesystem ID
+ * @returns {Promise<string>} - Table name for the codesystem
+ */
+async function getCodesystemTableNameByName(name) {
+    return new Promise((resolve, reject) => {
+        const db = new sqlite3.Database(DATABASE_FILE);
+
+        try {
+            // If id is null or empty, return the default table name
+            if (!name || name.trim() === '') {
+                resolve(TABLE_HL7_CODESYSTEM_300);
+                db.close();
+                return;
+            }
+
+            // Build the query with proper parameter binding
+            const query = `SELECT * FROM ${TABLE_HL7_CODESYSTEMS} WHERE codesystem_name = ?`;
+
+            db.get(query, [name], (err, row) => {
+                if (err) {
+                    logger.error("Error getting codesystem table name:", err);
+                    reject(err);
+                    return;
+                }
+
+                if (row && row.codesystem_tablename) {
+                    resolve(row.codesystem_tablename);
+                } else {
+                    // If no matching record found, return the default table name
+                    resolve(TABLE_HL7_CODESYSTEM_300);
+                }
+            });
+        } catch (error) {
+            logger.error("Exception in getCodesystemTableByName:", error);
+            reject(error);
+        } finally {
+            db.close((closeErr) => {
+                if (closeErr) {
+                    logger.error("Error closing database:", closeErr);
+                }
+            });
+        }
+    });
+}
+
 
 module.exports = {
     initializeCodeSystem,
@@ -296,5 +484,6 @@ module.exports = {
     getAllTags,
     getCodeSystemNames,
     createCodeSystem,
-    saveCodeSystemToFile
+    getCodesystemTableNameByName,
+    updateDetailCodeSystem
 };

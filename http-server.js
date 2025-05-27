@@ -4,11 +4,10 @@ const path = require("path");
 const fs = require('fs');
 const sqlite3 = require("sqlite3").verbose();
 const logger = require("./logger");
-const { DATABASE_FILE, TABLE_HL7_PATIENTS , LISTCODESYSTEM_API, CODESYSTEMTAGS_API} = require("./config");
+const { DATABASE_FILE, TABLE_HL7_PATIENTS , LISTCODESYSTEM_API, CODESYSTEMTAGS_API, TABLE_HL7_CODESYSTEMS} = require("./config");
 const { createPatientExcelWorkbook } = require("./export");
 const { getConnectionStats, getClientInfo } = require("./tcp-server");
-const { getAllTags, getCodeSystemNames, createCodeSystem } = require("./codesystem");
-
+const { getAllTags, getCodeSystemNames, createCodeSystem, getCodesystemTableNameByName, updateDetailCodeSystem} = require("./codesystem");
 
 /**
  * Creates an Express application for the HTTP API
@@ -318,14 +317,35 @@ function createHttpApp() {
   // API endpoint: List all codesystem names
   app.get(LISTCODESYSTEM_API, (req, res) => {
     try {
-      const mappingNames = getCodeSystemNames();
+      res.setHeader('Content-Type', 'application/json');
+      const db = new sqlite3.Database(
+          DATABASE_FILE,
+          sqlite3.OPEN_READONLY,
+          (openErr) => {
+            if (openErr) {
+              logger.error("Failed to open database:", openErr);
+              return res.status(500).json({ error: "Failed to connect to database" });
+            }
+          },
+      );
 
-      // Return success response
-      res.json({
-        success: true,
-        mappings: mappingNames
+      db.all(`SELECT * FROM ${TABLE_HL7_CODESYSTEMS}`, (err, rows) => {
+        if (err) {
+          logger.error("Error querying patients:", err);
+          res
+              .status(500)
+              .json({ error: "Internal server error while querying database" });
+        } else {
+          res.json(rows);
+        }
+
+        // Safely close database connection
+        db.close((closeErr) => {
+          if (closeErr) {
+            logger.error("Error closing database:", closeErr);
+          }
+        });
       });
-
       logger.info(`All custom tag mappings list retrieved via API`);
     } catch (error) {
       logger.error(`Error retrieving custom tag mappings list: ${error.message}`);
@@ -337,22 +357,48 @@ function createHttpApp() {
     }
   });
 
-  /**
-   * Get a custom tag mapping by name
-   * @param {string} name - Name of the custom mapping
-   * @returns {Object} - Result object with success status and tags if found
-   */
-  function getCustomTagMapping(name) {
-    if (!CodeSystemMappings[name]) {
-      return { success: false, message: 'Custom tag mapping not found' };
+
+  // API endpoint: Paginated patient query
+  app.get("/api/codesystem-detail/paginated/:id", async (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    const { startTime, endTime } = req.query;
+    let { id } = req.params;
+    if (!id || id.trim() === '') {
+      return res.status(400).json({ error: "invalid id" });
     }
+    const codesystemName = req.query.codesystemname;
+    const page = parseInt(req.query.page, 10) || 1;
+    const pageSize = parseInt(req.query.pageSize, 10) || 10;
 
-    return {
-      success: true,
-      mapping: CodeSystemMappings[name]
-    };
-  }
+    try {
+      // Get the appropriate table name for the codesystem
+      const tableName = await getCodesystemTableNameByName(codesystemName);
 
+      getPaginatedData(
+          DATABASE_FILE,
+          tableName,
+          "",
+          "",
+          "",
+          page,
+          pageSize,
+          (err, result) => {
+            if (err) {
+              logger.error("Error in codesystem pagination:", err);
+              res.status(500).json({ error: "Internal Server Error" });
+            } else {
+
+              res.json({
+                ...result
+              });
+            }
+          },
+      );
+    } catch (error) {
+      logger.error("Error getting codesystem table name:", error);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  });
 
   // API endpoint: get tags of a codesystem
   app.get(CODESYSTEMTAGS_API, (req, res) => {
@@ -379,38 +425,110 @@ function createHttpApp() {
     }
   });
 
-  // API endpoint: Clone a codesystem
-  app.post(CODESYSTEMTAGS_API, (req, res) => {
-    try {
-      const { targetName, codesystem } = req.body;
+  // 更新CodeSystem接口
+  app.post('/api/updatecodesystem', async (req, res) => {
+    const { codesystemName, changedData } = req.body;
 
-      if (!targetName) {
-        return res.status(400).json({
-          success: false,
-          message: "Target mapping name is required"
-        });
-      }
-
-      // Clone the codesystem
-      // Use targetName as filename
-      const result = createCodeSystem(targetName, codesystem, targetName);
-
-      if (!result.success) {
-        return res.status(400).json(result);
-      }
-
-      // Return success response
-      res.status(201).json(result);
-
-      logger.info(`Custom tag mapping "${sourceName}" cloned to "${targetName}" via API using file ${targetName}`);
-    } catch (error) {
-      logger.error(`Error cloning custom tag mapping: ${error.message}`);
-      res.status(500).json({
-        success: false,
-        message: "Failed to clone custom tag mapping",
-        error: error.message
-      });
+    if (!codesystemName || !Array.isArray(changedData)) {
+      logger.error("parameter error: lack of codesystemName or changedData");
+      return res.status(400).json({ error: "Invalid request body" });
     }
+
+    // 获取表名: 你应该有类似 getCodesystemTableName 的工具函数
+    const tableName = await getCodesystemTableNameByName(codesystemName);
+    if (!tableName) {
+      logger.error(`can not find table name, codesystemName: ${codesystemName}`);
+      return res.status(400).json({ error: "Unknown codesystemName" });
+    }
+
+    // 打开SQLite数据库
+    const db = new sqlite3.Database(DATABASE_FILE);
+
+    // 批量更新逻辑（假设每个changedData内有id字段）
+    let errorOccurred = false;
+    let updateCount = 0;
+
+    db.serialize(() => {
+      const stmt = db.prepare(
+          `UPDATE ${tableName} SET observationtype = ?, datatype = ?, encode = ? , parameterlabel = ?, encodesystem = ? , subid = ? , description = ? , source = ?, channel = ?, channelid = ? WHERE tagkey = ?`
+      );
+
+      changedData.forEach(item => {
+        // 假设数据形如 {id, code, display, other_field}
+        if (!item.observationtype) {
+          errorOccurred = true;
+          logger.error("lack of necessary field id:", item);
+          return;
+        }
+        if (!item.datatype) {
+          errorOccurred = true;
+          logger.error("lack of necessary field datatype:", item);
+          return;
+        }
+        if (!item.encode) {
+          errorOccurred = true;
+          logger.error("lack of necessary field encode:", item);
+          return;
+        }
+        if (!item.parameterlabel) {
+          errorOccurred = true;
+          logger.error("lack of necessary field parameterlabel:", item);
+          return;
+        }
+        if (!item.encodesystem) {
+          errorOccurred = true;
+          logger.error("lack of necessary field encodesystem:", item);
+          return;
+        }
+        if (!item.subid) {
+          errorOccurred = true;
+          logger.error("lack of necessary field subid:", item);
+          return;
+        }
+        if (!item.description) {
+          errorOccurred = true;
+          logger.error("lack of necessary field description:", item);
+          return;
+        }
+        if (!item.source) {
+          errorOccurred = true;
+          logger.error("lack of necessary field source:", item);
+          return;
+        }
+        if (!item.channel) {
+          errorOccurred = true;
+          logger.error("lack of necessary field channel:", item);
+          return;
+        }
+
+        if (!item.channelid) {
+          errorOccurred = true;
+          logger.error("lack of necessary field channelid:", item);
+          return;
+        }
+
+        stmt.run([item.observationtype, item.datatype, item.encode, item.parameterlabel, item.encodesystem,  item.subid, item.description, item.source, item.channel, item.channelid, item.tagkey], function (err) {
+          if (err) {
+            errorOccurred = true;
+            logger.error("update fail:", err.message);
+          } else {
+            updateCount++;
+          }
+        });
+      });
+
+
+      stmt.finalize(err => {
+        db.close();
+        if (err || errorOccurred) {
+          logger.error("batch update data fail:", err?.message);
+          return res.status(500).json({ error: "batch update data fail" });
+        }
+        res.json({ success: true, updated: updateCount }); // 返回更新数量
+      });
+    });
+
+    await updateDetailCodeSystem(tableName, changedData);
   });
 
   // Serve static files (UI)
@@ -428,7 +546,7 @@ function createHttpApp() {
  * Database paginated query logic
  * @param {string} databaseFile - Path to database file
  * @param {string} tableName - Table name to query
- * @param {string} patID - Patient ID to filter by
+ * @param {string} id - Patient ID to filter by
  * @param {string} startTime - Start time to filter by
  * @param {string} endTime - End time to filter by
  * @param {number} page - Page number
@@ -436,22 +554,22 @@ function createHttpApp() {
  * @param {Function} callback - Callback function
  */
 function getPaginatedData(
-  databaseFile,
-  tableName,
-  patID,
-  startTime,
-  endTime,
-  page = 1,
-  pageSize = 10,
-  callback,
+    databaseFile,
+    tableName,
+    id,
+    startTime,
+    endTime,
+    page = 1,
+    pageSize = 10,
+    callback,
 ) {
   const offset = (page - 1) * pageSize;
   const db = new sqlite3.Database(databaseFile);
   let whereParts = [];
   let params = [];
-  if (patID != null && patID.trim() !== '') {
+  if (id != null && id.trim() !== '') {
     whereParts.push('pat_ID = ?');
-    params.push(patID);
+    params.push(id);
   }
   if (startTime) {
     whereParts.push('Date >= ?');

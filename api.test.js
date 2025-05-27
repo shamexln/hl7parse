@@ -5,6 +5,41 @@ const API_URL = 'http://localhost:3000';
 
 // 确保在测试前API服务器已经运行
 
+describe('CodeSystem Detail Paginated API 测试', () => {
+  test('获取分页的代码系统详情应返回成功', async () => {
+    const response = await axios.get(`${API_URL}/api/codesystem-detail/paginated`);
+    console.log('获取分页的代码系统详情应返回成功 API 响应数据:', response.data);
+    expect(response.status).toBe(200);
+    expect(response.data).toHaveProperty('rows');
+    expect(response.data).toHaveProperty('total');
+    expect(response.data).toHaveProperty('page');
+    expect(response.data).toHaveProperty('pageSize');
+    expect(response.data).toHaveProperty('totalPages');
+    expect(Array.isArray(response.data.rows)).toBe(true);
+  });
+
+  test('使用ID参数获取分页的代码系统详情应返回成功', async () => {
+    // 假设数据库中有ID为300的代码系统
+    const response = await axios.get(`${API_URL}/api/codesystem-detail/paginated/300`);
+    console.log('使用ID参数获取分页的代码系统详情应返回成功 API 响应数据:', response.data);
+    expect(response.status).toBe(200);
+    expect(response.data).toHaveProperty('rows');
+    expect(response.data).toHaveProperty('total');
+    expect(Array.isArray(response.data.rows)).toBe(true);
+  });
+
+  test('使用分页参数获取代码系统详情应返回指定数量的记录', async () => {
+    const pageSize = 5;
+    const page = 2;
+    const response = await axios.get(`${API_URL}/api/codesystem-detail/paginated?page=${page}&pageSize=${pageSize}`);
+    console.log('使用分页参数获取代码系统详情应返回指定数量的记录 API 响应数据:', response.data);
+    expect(response.status).toBe(200);
+    expect(response.data).toHaveProperty('page', page);
+    expect(response.data).toHaveProperty('pageSize', pageSize);
+    expect(response.data.rows.length).toBeLessThanOrEqual(pageSize);
+  });
+});
+
 describe('Mapping API 测试', () => {
   test('获取所有映射应返回成功和映射数组', async () => {
     const response = await axios.get(`${API_URL}${LISTCODESYSTEM_API}`);

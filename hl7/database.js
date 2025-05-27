@@ -210,16 +210,32 @@ async function savePatientData(hl7Message) {
         hl7Message,
         "MDC_EVT_ALARM",
     );
+
+    // subid
+    const subId = targetObxCWEData?.subId || null;
+    if (subId) {
+      logger.info("Sub Id:", { subid: safeValue(subId) });
+    }
+
+    // source-channel
+    const sourcechannel = subId ? getSourceChannel(targetObxCWEData?.observationCode, subId) : null;
+    if (sourcechannel) {
+      logger.info("Source-Channel:", { sourcechannel: safeValue(sourcechannel) });
+    }
+
+
     // Check if alarmMessage is empty
     if (!alarmMessage || alarmMessage.trim() === '') {
       logger.warn('Alarm message is empty or undefined, no further processing will occur.');
       alarmMessage = "Unknown"; // Or set default value
     } else {
       // Process based on encode value
+      const observationDescription = getDescription(targetObxNMData?.observationCode, subId);
       switch (alarmMessage) {
+
         case '196674': // Concatenate observationName and lowLim
           if (targetObxNMData && safeValue(targetObxNMData.lowLim) !== undefined) {
-            alarmMessage = `${targetObxNMData.observationName} < ${targetObxNMData.lowLim}`;
+            alarmMessage = `${observationDescription} < ${targetObxNMData.lowLim}`;
             logger.info('Processed observationName with lowLim:', alarmMessage);
           } else {
           if (!targetObxNMData) {
@@ -232,7 +248,7 @@ async function savePatientData(hl7Message) {
 
         case '196652': // Concatenate observationName and upperLim
           if (targetObxNMData && safeValue(targetObxNMData.upperLim) !== undefined) {
-            alarmMessage = `${targetObxNMData.observationName} > ${targetObxNMData.upperLim}`;
+            alarmMessage = `${observationDescription} > ${targetObxNMData.upperLim}`;
             logger.info('Processed observationName with upperLim:', alarmMessage);
           } else {
             if (!targetObxNMData) {
@@ -255,17 +271,6 @@ async function savePatientData(hl7Message) {
       logger.info("Alarm Message:", { alarmMessage: safeValue(alarmMessage) });
     }
 
-    // subid
-    const subId = targetObxCWEData?.subId || null;
-    if (subId) {
-      logger.info("Sub Id:", { subid: safeValue(subId) });
-    }
-
-    // source-channel
-     const sourcechannel = subId ? getSourceChannel(subId) : null;
-    if (sourcechannel) {
-      logger.info("Source-Channel:", { sourcechannel: safeValue(sourcechannel) });
-    }
 
     logInputParameters({
       deviceGUID,

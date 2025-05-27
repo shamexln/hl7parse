@@ -19,12 +19,79 @@ jest.mock('sqlite3', () => ({
     verbose: () => ({}),
 }));
 
+jest.mock('./path/to/codesystem', () => ({
+    getCodesystemTableName: jest.fn().mockResolvedValue('mock_table_name')
+}));
+jest.mock('./path/to/your/paginationUtil', () => ({
+    getPaginatedData: jest.fn((db, table, id, start, end, page, pageSize, cb) => {
+        cb(null, {
+            total: 1,
+            rows: [{ code: 'demo', value: '示例' }]
+        });
+    })
+}));
 
 // 导入含有待测试API的模块
 // 注意：根据你的实际项目结构可能需要调整
 const { createHttpApp } = require('./http-server');
 const {LISTCODESYSTEM_API} = require("./config");
 const {getCodeSystemNames} = require("./codesystem");
+
+describe('GET /api/codesystem-detail/paginated', () => {
+    let app;
+    let server;
+
+    beforeAll(() => {
+        jest.clearAllMocks();
+        app = createHttpApp();
+        server = app.listen(0); // 使用随机端口
+    });
+
+    afterAll((done) => {
+        server.close(done);
+    });
+
+    it('should return paginated codesystem detail', async () => {
+        const res = await request(server)
+            .get('/api/codesystem-detail/paginated/') // 不传 id
+            .query({ page: 1, pageSize: 5 });
+
+        expect(res.status).toBe(200);
+        expect(res.body.total).toBe(1);
+        expect(Array.isArray(res.body.rows)).toBeTruthy();
+        expect(res.body.rows[0]).toHaveProperty('code', 'demo');
+        expect(res.body.rows[0]).toHaveProperty('value', '示例');
+    });
+});
+
+
+describe('GET /api/codesystem-detail/paginated/:id', () => {
+    let app;
+    let server;
+    beforeAll(() => {
+        jest.clearAllMocks();
+        app = createHttpApp();
+        server = app.listen(0); // 使用随机端口
+    });
+
+    afterAll((done) => {
+        server.close(done);
+    });
+    it('should return paginated codesystem detail with id', async () => {
+        const id = '12345';
+        const res = await request(app)
+            .get(`/api/codesystem-detail/paginated/${id}`)
+            .query({ page: 1, pageSize: 5 });
+
+        expect(res.status).toBe(200);
+        expect(res.body.total).toBe(1);
+        expect(Array.isArray(res.body.rows)).toBe(true);
+        expect(res.body.rows[0]).toHaveProperty('id', id);
+        expect(res.body.rows[0]).toHaveProperty('code', 'mock-code');
+        expect(res.body.rows[0]).toHaveProperty('value', '示例带ID');
+    });
+});
+
 
 describe('API Endpoint: `${CODESYSTEM_API}`', () => {
     let app;

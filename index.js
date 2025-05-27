@@ -6,30 +6,44 @@ const { initializeCodeSystem } = require('./codesystem');
 const { createTcpServer, restartTcpServer, isValidPort } = require('./tcp-server');
 const { startHttpServer, restartHttpServer } = require('./http-server');
 
-// Initialize database and code system
-initializeDatabase();
-initializeCodeSystem();
-
-// Read port configuration
+// Define portConfigPath outside the async function so it's accessible to fs.watch
 const portConfigPath = path.join(process.cwd(), 'port-config.json');
 let portConfig = { tcpPort: 3359, httpPort: 3000 };
 
-try {
-  if (fs.existsSync(portConfigPath)) {
-    portConfig = JSON.parse(fs.readFileSync(portConfigPath, 'utf8'));
-    logger.info(`Loaded port configuration: TCP port ${portConfig.tcpPort}, HTTP port ${portConfig.httpPort}`);
-  } else {
-    // If config file doesn't exist, create default config
-    fs.writeFileSync(portConfigPath, JSON.stringify(portConfig, null, 2));
-    logger.info(`Created default port configuration file at ${portConfigPath}`);
-  }
-} catch (error) {
-  logger.error(`Error loading port configuration: ${error.message}`);
-}
+// Initialize database and code system asynchronously, then start servers
+(async function init() {
+  try {
+    // Wait for database and code system initialization to complete
+    await initializeDatabase();
+    await initializeCodeSystem();
+    logger.info('Database and code system initialized successfully');
 
-// Start servers
-let tcpServer = createTcpServer(portConfig.tcpPort);
-let httpServer = startHttpServer(portConfig.httpPort);
+    try {
+      if (fs.existsSync(portConfigPath)) {
+        portConfig = JSON.parse(fs.readFileSync(portConfigPath, 'utf8'));
+        logger.info(`Loaded port configuration: TCP port ${portConfig.tcpPort}, HTTP port ${portConfig.httpPort}`);
+      } else {
+        // If config file doesn't exist, create default config
+        fs.writeFileSync(portConfigPath, JSON.stringify(portConfig, null, 2));
+        logger.info(`Created default port configuration file at ${portConfigPath}`);
+      }
+    } catch (error) {
+      logger.error(`Error loading port configuration: ${error.message}`);
+    }
+
+    // Start servers only after initialization is complete
+    let tcpServer = createTcpServer(portConfig.tcpPort);
+    let httpServer = startHttpServer(portConfig.httpPort);
+
+    // Set the exported variables
+    module.exports.tcpServer = tcpServer;
+    module.exports.httpServer = httpServer;
+    module.exports.portConfig = portConfig;
+
+  } catch (error) {
+    logger.error('Error during initialization:', error);
+  }
+})();
 
 // Watch for configuration file changes
 let watchDebounceTimer = null;
@@ -104,8 +118,7 @@ fs.watch(portConfigPath, (eventType) => {
 });
 
 // Export for testing
+// Initially export just portConfig, tcpServer and httpServer will be set after initialization
 module.exports = {
-  tcpServer,
-  httpServer,
   portConfig
 };

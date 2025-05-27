@@ -3,6 +3,8 @@ const path = require('path');
 module.exports = {
     DATABASE_FILE: path.join(process.cwd(), 'hl7_messages.db'),
     TABLE_HL7_PATIENTS: 'hl7_patients',
+    TABLE_HL7_CODESYSTEMS: 'hl7_codesystem',
+    TABLE_HL7_CODESYSTEM_300: 'hl7_codesystem_300',
     CODE_SYSTEM: '300_map.xml',
     // Winston log config
     LOG_CONFIG: {

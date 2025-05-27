@@ -1,5 +1,5 @@
 const sqlite3 = require('sqlite3').verbose();
-const { TABLE_HL7_PATIENTS, DATABASE_FILE } = require('./config');
+const { TABLE_HL7_PATIENTS, DATABASE_FILE, TABLE_HL7_CODESYSTEMS, TABLE_HL7_CODESYSTEM_300} = require('./config');
 const winston = require('winston');
 
 // 日志配置示例（仅供参考，你项目中可能已有此配置）
@@ -12,11 +12,14 @@ const logger = winston.createLogger({
     transports: [new winston.transports.Console()]
 });
 
-function initializeDatabase() {
+async function initializeDatabase() {
     const db = new sqlite3.Database(DATABASE_FILE);
+    const util = require('util');
+    const dbRun = util.promisify(db.run).bind(db);
 
-    db.serialize(() => {
-        db.run(`
+    try {
+        // Create patients table
+        await dbRun(`
             CREATE TABLE IF NOT EXISTS ${TABLE_HL7_PATIENTS} (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 device_id TEXT,
@@ -50,16 +53,62 @@ function initializeDatabase() {
                 raw_message TEXT,
                 received_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
-        `, function(err) {
-            if (err) {
-                logger.error('Error creating table:', err);
-            } else {
-                logger.info(`Table "${TABLE_HL7_PATIENTS}" created or already exists.`);
-            }
-        });
-    });
+        `);
+        logger.info(`Table "${TABLE_HL7_PATIENTS}" created or already exists.`);
 
-    db.close();
+        // Create codesystems table
+        await dbRun(`
+            CREATE TABLE IF NOT EXISTS ${TABLE_HL7_CODESYSTEMS} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                codesystem_id TEXT,
+                codesystem_name TEXT,
+                codesystem_filename TEXT,
+                codesystem_tablename TEXT,
+                codesystem_isdeault TEXT,
+                codesystem_iscurrent TEXT,
+                codesystem_xml TEXT,
+                received_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+        logger.info(`Table "${TABLE_HL7_CODESYSTEMS}" created or already exists.`);
+
+        // Create codesystem detail table
+        await dbRun(`
+            CREATE TABLE IF NOT EXISTS ${TABLE_HL7_CODESYSTEM_300} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tagkey TEXT,
+                observationtype TEXT,
+                datatype TEXT,
+                encode TEXT,
+                parameterlabel TEXT,
+                encodesystem TEXT,
+                subid TEXT,
+                description TEXT,
+                source TEXT,
+                mds TEXT,
+                mdsid TEXT,
+                vmd TEXT,
+                vmdid TEXT,
+                channel TEXT,
+                channelid TEXT
+            )
+        `);
+        logger.info(`Table "${TABLE_HL7_CODESYSTEM_300}" created or already exists.`);
+    } catch (err) {
+        logger.error('Error creating tables:', err);
+        throw err; // Rethrow to allow caller to handle the error
+    } finally {
+        await new Promise((resolve, reject) => {
+            db.close(err => {
+                if (err) {
+                    logger.error('Error closing database:', err);
+                    reject(err);
+                } else {
+                    resolve();
+                }
+            });
+        });
+    }
 }
 
 module.exports = {
