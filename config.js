@@ -27,6 +27,6 @@ module.exports = {
         }
     },
     LISTCODESYSTEM_API: '/api/codesystem',
-    CODESYSTEMTAGS_API: '/api/codesystem/:name',
+    CODESYSTEMTAGS_API: '/api/codesystem/:id',
 
 };

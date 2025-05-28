@@ -39,7 +39,7 @@ function createHttpApp() {
       },
     );
 
-    db.all(`SELECT * FROM ${TABLE_HL7_PATIENTS}`, (err, rows) => {
+    db.all(`SELECT * FROM ${TABLE_HL7_PATIENTS} ORDER BY datetime(utcDate) DESC`, (err, rows) => {
       if (err) {
         logger.error("Error querying patients:", err);
         res
@@ -56,24 +56,6 @@ function createHttpApp() {
         }
       });
     });
-  });
-
-  // API endpoint: Search patients by name
-  app.get("/api/patients/search", (req, res) => {
-    res.setHeader('Content-Type', 'application/json');
-    const { name } = req.query;
-    const db = new sqlite3.Database(DATABASE_FILE);
-    db.all(
-      `SELECT * FROM ${TABLE_HL7_PATIENTS} WHERE last_name LIKE ? OR first_name LIKE ?`,
-      [`%${name}%`, `%${name}%`],
-      (err, rows) => {
-        if (err) {
-          logger.error("Error searching patients:", err);
-          return res.status(500).json({ error: err.message });
-        }
-        res.json(rows);
-      },
-    );
   });
 
   // API endpoint: Paginated patient query
@@ -115,13 +97,13 @@ function createHttpApp() {
 
   // API endpoint: Export patient data to Excel
   app.get('/api/patients/export/:id?', async (req, res) => {
-    const patientId = req.params.id && req.params.id.trim();
+    const patientId = req.params.id?.trim();
     const { startTime, endTime } = req.query;
     const db = new sqlite3.Database(DATABASE_FILE);
     const tableName = TABLE_HL7_PATIENTS;
 
     // Fetch data from database for patientId
-    const fetchDataFromDB = (patientId) => {
+    const fetchDataFromDB = (patientId, startTime, endTime) => {
       return new Promise((resolve, reject) => {
         let query = `SELECT * FROM ${tableName}`;
         let conditions = [];
@@ -361,7 +343,6 @@ function createHttpApp() {
   // API endpoint: Paginated patient query
   app.get("/api/codesystem-detail/paginated/:id", async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
-    const { startTime, endTime } = req.query;
     let { id } = req.params;
     if (!id || id.trim() === '') {
       return res.status(400).json({ error: "invalid id" });
@@ -397,31 +378,6 @@ function createHttpApp() {
     } catch (error) {
       logger.error("Error getting codesystem table name:", error);
       res.status(500).json({ error: "Internal Server Error" });
-    }
-  });
-
-  // API endpoint: get tags of a codesystem
-  app.get(CODESYSTEMTAGS_API, (req, res) => {
-    try {
-      const { name } = req.params;
-      if (!CodeSystemMappings[name]) {
-        return { success: false, message: 'Custom tag mapping not found' };
-      }
-
-      // Return success response
-      res.json({
-        success: true,
-        codesystem: CodeSystemMappings[name]
-      });
-
-      logger.info(`All ${name} tag list retrieved via API`);
-    } catch (error) {
-      logger.error(`Error retrieving tags list: ${error.message}`);
-      res.status(500).json({
-        success: false,
-        message: "Failed to retrieve tags list",
-        error: error.message
-      });
     }
   });
 
@@ -559,8 +515,8 @@ function getPaginatedData(
     id,
     startTime,
     endTime,
-    page = 1,
-    pageSize = 10,
+    page ,
+    pageSize ,
     callback,
 ) {
   const offset = (page - 1) * pageSize;
@@ -580,9 +536,12 @@ function getPaginatedData(
     params.push(endTime);
   }
 
-  const whereClause = whereParts.length > 0 ? `WHERE ${whereParts.join(' AND ')}` : '';
+  let whereClause = whereParts.length > 0 ? `WHERE ${whereParts.join(' AND ')}` : '';
+  if (whereClause.length !==0 ) {
+    whereClause += ' ORDER BY datetime(local_time) DESC';
+  }
   const totalQuery = `SELECT COUNT(*) AS total FROM ${tableName} ${whereClause}`;
-  const dataQuery = `SELECT * FROM ${tableName} ${whereClause} LIMIT ? OFFSET ?`;
+  const dataQuery = `SELECT * FROM ${tableName} ${whereClause}  LIMIT ? OFFSET ?`;
   const dataParams = params.concat([pageSize, offset]);
 
   db.serialize(() => {
@@ -667,6 +626,5 @@ module.exports = {
   createHttpApp,
   startHttpServer,
   restartHttpServer,
-  isValidPort,
   getPaginatedData
 };
