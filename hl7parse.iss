@@ -3,8 +3,8 @@
 
 #define MyAppName "HL7Parse"
 #define MyAppVersion "1.0"
-#define MyAppPublisher "HL7Parse"
-#define MyAppURL "http://localhost:8978"
+#define MyAppPublisher "Draeger"
+#define MyAppURL "https://www.draeger.com/"
 #define MyAppExeName "hl7parse.exe"
 #define MyDirectoryName "HL7Parse"
 
@@ -19,17 +19,18 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
-DefaultDirName={autopf}\{#MyDirectoryName}\{#MyAppName}
+DefaultDirName={autopf}\{#MyDirectoryName}
 DisableProgramGroupPage=yes
 ; Uncomment the following line to run in non administrative install mode (install for current user only.)
-;PrivilegesRequired=lowest
+PrivilegesRequired=admin
 OutputDir=output
 OutputBaseFilename=hl7parse-{#MyAppVersion}
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
-SetupIconFile=dist\hl7_icon.ico
+SetupIconFile=hl7_icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
+
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -39,14 +40,66 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 ; Only include files from the dist directory
-Source: "dist\hl7parse.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "dist\public\*"; DestDir: "{app}\public"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "port-config.json"; DestDir: "{app}"; Flags: ignoreversion uninsremovereadonly
+Source: "300_map.xml"; DestDir: "{app}"; Flags: ignoreversion uninsremovereadonly
+Source: "dist\hl7parse.exe"; DestDir: "{app}"; Flags: ignoreversion uninsremovereadonly
+Source: "tools\nssm.exe"; DestDir: "{app}\tools"; Flags: ignoreversion uninsremovereadonly
+Source: "public\*"; DestDir: "{app}\public"; Flags: ignoreversion recursesubdirs createallsubdirs uninsremovereadonly
 
 [Icons]
 Name: "{autoprograms}\{#MyDirectoryName}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{autodesktop}\{#MyAppName}"; Filename: "http://localhost:8978"; Tasks: desktopicon
 
 [Run]
-; Only include commands related to hl7parse.exe
-Filename: "{app}\hl7parse.exe"; Description: "Start HL7 Parse Application"; Flags: nowait postinstall skipifsilent
-Filename: "{sys}\cmd.exe"; Parameters: "/c start http://localhost:8978"; Description: "Open Web Interface"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\tools\nssm.exe"; \
+  Parameters: "install HL7ParseService ""{app}\hl7parse.exe"""; \
+  StatusMsg: "Registering HL7Parse service..."; \
+  Flags: runhidden waituntilterminated
+  
+Filename: "{app}\tools\nssm.exe"; \
+  Parameters: "set HL7ParseService AppDirectory ""{app}"""; \
+  StatusMsg: "Configuring service working directory.."; \
+  Flags: runhidden waituntilterminated
+  
+Filename: "{app}\tools\nssm.exe"; \
+  Parameters: "set HL7ParseService DisplayName ""HL7Parse Service"""; \
+  StatusMsg: "Setting service display name..."; \
+  Flags: runhidden waituntilterminated
+
+Filename: "{app}\tools\nssm.exe"; \
+  Parameters: "set HL7ParseService Description ""HL7 Message Parsing Service"""; \
+  StatusMsg: "Setting service description..."; \
+  Flags: runhidden waituntilterminated
+
+  
+Filename: "{app}\Tools\nssm.exe"; \
+  Parameters: "set HL7ParseService Start SERVICE_AUTO_START"; \
+  StatusMsg: "Setting service to start automatically..."; \
+  Flags: runhidden waituntilterminated
+
+Filename: "{app}\tools\nssm.exe"; \
+  Parameters: "start HL7ParseService"; \
+  StatusMsg: "Starting HL7Parse service..."; \
+  Flags: runhidden waituntilterminated
+
+[UninstallDelete]
+Type: dirifempty; Name: "{app}\logs"        ; 
+Type: filesandordirs; Name: "{app}\logs"    ; 
+Type: dirifempty; Name: "{app}\tools"        ; 
+Type: filesandordirs; Name: "{app}\tools"    ;
+Type: filesandordirs; Name: "{app}\hl7_messages.db"    ; 
+Type: dirifempty; Name: "{app}"
+
+[UninstallRun]
+Filename: "{app}\tools\nssm.exe"; \
+  Parameters: "stop HL7ParseService"; \
+  StatusMsg: "Stopping HL7Parse service..."; \
+  Flags: runhidden waituntilterminated; \
+  RunOnceId: "StopService"
+
+Filename: "{app}\tools\nssm.exe"; \
+  Parameters: "remove HL7ParseService confirm"; \
+  StatusMsg: "Uninstalling HL7Parse service..."; \
+  Flags: runhidden waituntilterminated; \
+  RunOnceId: "RemoveHL7Service"
+

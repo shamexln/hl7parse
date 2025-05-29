@@ -53,7 +53,7 @@ async function updateCodesysteminDB(data, detailtablename = TABLE_HL7_CODESYSTEM
         // 查询总记录数
         const countRow = await dbGet(`SELECT COUNT(*) AS count FROM ${TABLE_HL7_CODESYSTEMS}`);
         const totalCount = countRow.count;
-        logger.info(`当前表总记录数为：${totalCount}`);
+        logger.info(`**The total number of records in the current table is ：${totalCount}`);
 
         // 查询是否已存在
         const row = await dbGet(
